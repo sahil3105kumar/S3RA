@@ -1,0 +1,19 @@
+[project]
+name = "backend"
+version = "0.1.0"
+description = "S3RA FastAPI Backend"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "duckduckgo-search>=8.1.1",
+    "fastapi>=0.141.1",
+    "groq>=1.6.0",
+    "pydantic>=2.13.4",
+    "python-dotenv>=1.2.3",
+    "sentence-transformers>=6.0.0",
+    "supabase>=2.31.0",
+    "uvicorn[standard]>=0.52.3",
+]
+
+[tool.uv]
+package = false
