@@ -7,6 +7,13 @@ frontend/.env.local
 *.env
 *.env.*
 
+=========================
+#Local Documentation
+docs/
+
+
+-> not pushing docs during building.
+
 # =========================
 # Python & uv (Backend)
 # =========================
