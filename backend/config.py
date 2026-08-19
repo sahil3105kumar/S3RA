@@ -6,7 +6,7 @@ import os
 from dotenv import load_dotenv
 
 
-_ENV_PATH = Path(__file__).resolve().parents[1] / ".env"
+_ENV_PATH = Path(__file__).resolve().parent / ".env"
 load_dotenv(_ENV_PATH)
 
 
