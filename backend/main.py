@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 
-from backend.config import GROQ_API_KEY, SUPABASE_KEY, SUPABASE_URL
+from config import GROQ_API_KEY, SUPABASE_KEY, SUPABASE_URL
 
 app = FastAPI(title="S3RA API")
 

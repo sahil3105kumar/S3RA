@@ -5,6 +5,7 @@ preprocessing/extract.py's dispatch.
 """
 
 import os
+from pathlib import Path
 
 from sentence_transformers import SentenceTransformer
 from supabase import create_client
@@ -98,4 +99,8 @@ def ingest_file(path: str, owner_id: str | None = None) -> int:
 
 
 if __name__ == "__main__":
-    ingest_file("data/test.txt")
+    # Resolve relative to this file's directory so this still works
+    # regardless of the caller's cwd, without depending on package-relative
+    # import machinery.
+    _TEST_FILE = Path(__file__).resolve().parent / "data" / "test.txt"
+    ingest_file(str(_TEST_FILE))
