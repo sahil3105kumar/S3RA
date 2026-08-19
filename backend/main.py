@@ -1,13 +1,6 @@
-import os
-from dotenv import load_dotenv
 from fastapi import FastAPI
 
-# Load variables from .env
-load_dotenv()
-
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+from data.config import GROQ_API_KEY, SUPABASE_KEY, SUPABASE_URL
 
 app = FastAPI(title="S3RA API")
 

@@ -1,0 +1,362 @@
+# Retrieval-Augmented Generation (RAG)
+
+### A Structured Guide From Basics to Advanced
+
+Compiled and structured from a mind-map overview of RAG, expanded into a full learning document with explanations, comparisons, and revision notes.
+
+Contents
+
+1. What is RAG & Why It Exists
+
+2. Core RAG Architecture (Indexing → Retrieval → Augmentation → Generation)
+
+3. Component Deep-Dive: Chunking, Embeddings, Vector Stores, Retrievers
+
+4. Advanced RAG Techniques
+
+5. Evaluating RAG Systems (RAGAS Framework)
+
+6. Challenges & Limitations
+
+7. Real-World Use Cases
+
+8. Quick Revision Notes & Interview Q&A
+
+RAG — Retrieval-Augmented Generation From Basics to Advanced | Study Notes
+
+
+# 1. What is RAG & Why It Exists
+
+Retrieval-Augmented Generation (RAG) is an architecture pattern that combines an information-retrieval system with a large language model (LLM), so the model's answers are grounded in external, up-to-date, or private data rather than relying only on what it memorized during training.
+
+### 1.1 The Problem RAG Solves
+
+### • Knowledge cutoff: LLMs only know what existed in their training data — nothing after their cutoff date.
+
+### • Hallucination: When an LLM doesn't know something, it can still generate a fluent, confident, but factually wrong
+
+answer.
+
+### • No access to private data: A base LLM cannot answer questions about your company's internal documents, a
+
+legal case file, or your personal notes — it was never trained on them.
+
+### • Expensive to update: Fine-tuning a model every time facts change (prices, policies, news) is costly and slow.
+
+### • No source attribution: A pure LLM answer can't tell you *where* a fact came from, which matters for trust and
+
+verification.
+
+### 1.2 The RAG Idea (in one line)
+
+"Before answering, go look it up." Instead of asking the LLM to answer purely from memory, the system first retrieves the most relevant pieces of external text for the question, then feeds those pieces to the LLM as context, and asks it to answer using that context.
+
+### 1.3 RAG vs. Fine-Tuning vs. Long-Context
+
+Aspect RAG Fine-Tuning Long-Context Stuffing
+
+Updates knowledge Instantly (just update the index) Requires retraining Manual, per-request
+
+Cost Low — no retraining High (compute + data prep) High token cost per query
+
+Source attribution Yes — can cite chunks No Possible but unmanaged
+
+Best for Facts, private docs, changing data Style, tone, task behaviour, format Small, fixed document sets
+
+Weakness Retrieval quality bottleneck Doesn't fix hallucination on new facts Expensive, slower, can lose focus ('lost in the middle')
+
+In practice, production systems often combine RAG (for facts) with light fine-tuning (for behaviour/format).
+
+RAG — Retrieval-Augmented Generation From Basics to Advanced | Study Notes
+
+
+
+# 2. Core RAG Architecture
+
+A RAG system has two distinct phases that run at different times: an offline Indexing pipeline (done once, or whenever source data changes) and an online Query pipeline (done every time a user asks something).
+
+### 2.1 Phase A — Indexing Pipeline (offline)
+
+Step What Happens
+
+1. Load Read raw source documents — PDFs, HTML, Word docs, database rows, Notion pages, etc.
+
+2. Chunk Split large documents into smaller, semantically coherent pieces (chunks).
+
+3. Embed Convert each chunk into a dense numeric vector using an embedding model.
+
+4. Store Save each vector (plus the original text + metadata) into a vector database / index.
+
+### 2.2 Phase B — Query / Retrieval Pipeline (online, per request)
+
+Step What Happens
+
+1. Embed query The user's question is converted into a vector using the same embedding model.
+
+2. Retrieve The vector store returns the top-k most similar chunks (nearest neighbours) to the query vector.
+
+3. (Optional) Rerank A more accurate but slower reranker model re-scores the retrieved chunks and reorders them.
+
+4. Augment The top chunks are inserted into a prompt template along with the original question.
+
+5. Generate The LLM reads the augmented prompt and produces an answer grounded in the retrieved context.
+
+### 2.3 Minimal Prompt Template Used at Generation Time
+
+Use ONLY the context below to answer the question. If the answer is not in the context, say you don't know.
+
+Context: {retrieved_chunk_1} {retrieved_chunk_2} ...
+
+Question: {user_question} Answer:
+
+RAG — Retrieval-Augmented Generation From Basics to Advanced | Study Notes
+
+
+
+# 3. Component Deep-Dive
+
+### 3.1 Chunking (Text Splitting)
+
+Chunking determines what unit of text gets embedded and retrieved. Too large → irrelevant text dilutes the match and wastes context window. Too small → loses surrounding meaning.
+
+Fixed-size chunking Split every N tokens/characters, often with an overlap (e.g. 200 tokens, 20-token overlap). Simple, fast, but can cut sentences mid-thought.
+
+Recursive splitting Try to split on paragraph → sentence → word boundaries, falling back only when a chunk is still too large. Most commonly used default.
+
+Semantic chunking Split based on embedding-similarity shifts between sentences, so each chunk stays topically coherent.
+
+Document-aware chunking Respect structure — split by Markdown headers, HTML tags, or PDF sections rather than raw character count.
+
+### 3.2 Embeddings
+
+An embedding model maps text to a fixed-length dense vector such that semantically similar text ends up close together in vector space (measured by cosine similarity or dot product).
+
+### • Popular models: OpenAI text-embedding-3, Cohere embed-v3, BGE, E5, Sentence-Transformers (all-MiniLM,
+
+mpnet), Google's Gemini embeddings.
+
+### • Dimensionality: typically 384–3072 dimensions — higher dimensions can capture more nuance but cost more
+
+storage/compute.
+
+### • Domain matters: a general-purpose embedding model can perform poorly on legal, medical, or code text —
+
+domain-specific or fine-tuned embedding models help (relevant for a legal-document tool).
+
+### 3.3 Vector Databases / Indexes
+
+Vector stores index embeddings for fast approximate nearest-neighbour (ANN) search across millions of vectors.
+
+Store Notes
+
+FAISS Library (not a server) from Meta; very fast, in-memory, no built-in persistence/metadata filtering out of the box.
+
+Qdrant Self-hostable vector DB with rich metadata filtering, payload storage, good for local-first apps.
+
+Chroma Lightweight, embedded, popular for prototyping.
+
+Pinecone / Weaviate / Milvus Managed / distributed vector DBs built for large-scale production workloads.
+
+pgvector Postgres extension — good when you already run Postgres and want vectors alongside relational data.
+
+Common ANN indexing algorithms: HNSW (Hierarchical Navigable Small World — most widely used, good recall/speed tradeoff) and IVF (Inverted File Index — clusters vectors, searches nearby clusters only).
+
+### 3.4 Retrievers
+
+RAG — Retrieval-Augmented Generation From Basics to Advanced | Study Notes
+
+
+
+Dense retrieval Pure vector similarity search — captures semantic meaning, good for paraphrased queries.
+
+Sparse retrieval (BM25/TF-IDF) Classic keyword-frequency matching — strong for exact terms, IDs, names, legal citations, code symbols.
+
+Hybrid retrieval Combine dense + sparse scores (e.g. weighted sum or Reciprocal Rank Fusion) — usually outperforms either alone.
+
+### 3.5 Rerankers
+
+A reranker (often a cross-encoder like Cohere Rerank or BGE-reranker) looks at the (query, chunk) pair jointly — much more accurate than the initial retrieval, but too slow to run over the whole corpus. So retrieval gets top-k (e.g.
+
+50. , and the reranker narrows it to the best k' (e.g. 5) before generation.
+
+### 3.6 The Generator (LLM)
+
+The final LLM call takes the user question + retrieved context and produces the answer. Key prompt-engineering concerns here: instructing the model to only use provided context, to cite sources, and to explicitly say "I don't know" when context is insufficient (this directly reduces hallucination).
+
+RAG — Retrieval-Augmented Generation From Basics to Advanced | Study Notes
+
+
+
+# 4. Advanced RAG Techniques
+
+### 4.1 Query Transformation
+
+Query rewriting LLM rewrites a vague/conversational query into a clearer search query before retrieval.
+
+Multi-query retrieval LLM generates several reformulations of the question, retrieves for each, and merges/dedupes the results — improves recall.
+
+HyDE (Hypothetical Document Embeddings) LLM first generates a hypothetical answer to the question, then embeds THAT and searches with it — hypothetical answers often match real document phrasing better than short questions do.
+
+Step-back prompting LLM first asks a more general/abstract version of the question to retrieve broader context, then answers the specific question.
+
+### 4.2 Fusion & Re-ranking
+
+### • Reciprocal Rank Fusion (RRF): combines rankings from multiple retrievers (e.g. dense + BM25, or multiple
+
+query variants) into one merged ranked list, without needing score normalization.
+
+### • Cross-encoder reranking: covered in 3.5 — the standard accuracy boost before generation.
+
+### 4.3 Self-RAG / Corrective RAG (CRAG)
+
+The model evaluates its own retrieved context for relevance/sufficiency before generating. If the context is judged weak, the system can trigger a fresh retrieval, reformulate the query, or fall back to a web search — adding a self-correction loop instead of blindly trusting the first retrieval.
+
+### 4.4 Agentic RAG
+
+Instead of one fixed retrieve-then-generate pass, an LLM agent decides — step by step — whether to retrieve, which source/tool to query (vector DB, SQL DB, web search, calculator), how many times to retrieve, and when it has enough information to answer. Useful for multi-hop questions that need several pieces of evidence chained together.
+
+### 4.5 GraphRAG
+
+Builds a knowledge graph (entities + relationships) from the source documents, then retrieval traverses the graph rather than (or in addition to) vector similarity. Strong for questions that require connecting facts across many documents ("who reports to whom", multi-entity reasoning).
+
+### 4.6 Contextual / Parent-Document Retrieval
+
+### • Small-to-big retrieval: embed small precise chunks for matching, but return the larger parent chunk/section to
+
+the LLM for full context.
+
+### • Contextual chunk headers: prepend a short LLM-generated summary of the whole document to each chunk
+
+before embedding, so isolated chunks retain document-level context (Anthropic's "Contextual Retrieval" technique).
+
+RAG — Retrieval-Augmented Generation From Basics to Advanced | Study Notes
+
+
+
+# 5. Evaluating RAG Systems
+
+RAG needs to be evaluated on two separate axes — retrieval quality and generation quality — because a good LLM can still fail if it was given bad context, and a good retriever's work can still be wasted if the LLM ignores or misreads the context.
+
+### 5.1 The RAGAS Framework (widely used metric set)
+
+Metric Measures Checks
+
+Context Precision Retrieval quality Of the retrieved chunks, how many are actually relevant to the question?
+
+Context Recall Retrieval quality Of all the relevant chunks that exist, how many did retrieval actually find?
+
+Faithfulness Generation quality Is every claim in the answer actually supported by the retrieved context (i.e. no hallucination)?
+
+Answer Relevancy Generation quality Does the generated answer actually address the question asked?
+
+Faithfulness is the single most important metric for reducing hallucination — it directly checks whether the model invented facts not present in the retrieved text.
+
+### 5.2 Other Practical Evaluation Approaches
+
+### • Golden Q&A test sets: hand-written (question, expected answer, expected source chunk) triples run through the
+
+pipeline regularly.
+
+### • LLM-as-judge: use a strong LLM to score answers against a rubric when human labeling doesn't scale.
+
+### • Retrieval hit-rate @ k: simple metric — did the correct chunk appear anywhere in the top-k retrieved results?
+
+### • Latency & cost tracking: retrieval + reranking + generation each add latency; production systems must track
+
+p95 latency per stage.
+
+RAG — Retrieval-Augmented Generation From Basics to Advanced | Study Notes
+
+
+
+# 6. Challenges & Limitations
+
+Chunking tradeoffs No single chunk size is optimal for every query — a hard, unsolved tuning problem.
+
+Retrieval bottleneck The whole system is only as good as retrieval — a great LLM can't recover from irrelevant retrieved chunks ("garbage in, garbage out").
+
+Lost-in-the-middle LLMs tend to pay less attention to information placed in the middle of a long context window, even if it's relevant.
+
+Multi-hop reasoning Standard single-pass RAG struggles with questions that require combining facts scattered across multiple documents.
+
+Stale or conflicting data If the underlying corpus has outdated or contradictory documents, retrieval can surface conflicting "facts" with no arbitration logic.
+
+Latency & cost Every extra step (query rewriting, reranking, multi-query) adds LLM/API calls, hence cost and response time.
+
+Security / access control In enterprise RAG, retrieval must respect per-user document permissions — a naive vector index has no concept of "who is allowed to see this."
+
+RAG — Retrieval-Augmented Generation From Basics to Advanced | Study Notes
+
+
+
+# 7. Real-World Use Cases
+
+### • Enterprise knowledge assistants — chat over internal wikis, Confluence, Slack history.
+
+### • Customer support bots — answer from product docs / help-center articles with citations.
+
+### • Legal & compliance tools — retrieve relevant clauses, case law, or prior filings (e.g. an FIR/contract
+
+error-detection tool would use retrieval over a legal corpus for citation/entity verification).
+
+### • Code assistants — retrieve relevant functions/files from a codebase before answering or generating code (e.g.
+
+Cursor, GitHub Copilot Chat, Claude Code).
+
+### • Medical / research assistants — ground answers in peer-reviewed literature instead of parametric memory.
+
+### • Personal "second-brain" agents — retrieve from your own notes, journals, and past conversations before
+
+responding (directly relevant to a personal cognitive-OS style project).
+
+RAG — Retrieval-Augmented Generation From Basics to Advanced | Study Notes
+
+
+
+# 8. Quick Revision Notes & Interview Q&A
+
+### 8.1 One-Line Recall Sheet
+
+RAG in one line Retrieve relevant text → feed it to the LLM as context → generate a grounded answer.
+
+Indexing pipeline Load → Chunk → Embed → Store
+
+Query pipeline Embed query → Retrieve → (Rerank) → Augment prompt → Generate
+
+Best default chunking Recursive splitting, ~200-500 tokens, with ~10-20% overlap
+
+Best default retrieval Hybrid (dense + BM25) + cross-encoder reranker
+
+Key hallucination fix Force the prompt to say "answer only from context; say I don't know otherwise"
+
+Most important eval metric Faithfulness (are claims actually grounded in retrieved text?)
+
+HyDE in one line Embed a hypothetical answer instead of the raw question, to match document phrasing better
+
+RRF in one line Merge multiple ranked retrieval lists into one, using reciprocal-rank scores
+
+Agentic RAG in one line LLM decides when/what/how many times to retrieve, instead of one fixed pass
+
+### 8.2 Interview-Style Q&A
+
+Q. Why not just increase the LLM's context window instead of using RAG? A. Long-context stuffing is expensive per query, doesn't scale to large corpora, suffers from "lost-in-the-middle" attention issues, and provides no clean mechanism for source attribution or access control — RAG retrieves only what's relevant, keeping prompts small and precise.
+
+Q. What's the difference between dense and sparse retrieval, and why use both? A. Dense retrieval (embeddings) captures semantic/paraphrased meaning; sparse retrieval (BM25) captures exact keyword/term matches (IDs, names, rare terms). Hybrid retrieval combines both because each covers the other's blind spots.
+
+Q. Why does chunk size matter so much? A. Too small: chunks lose surrounding context and meaning. Too large: irrelevant text gets pulled in alongside the relevant part, diluting retrieval precision and wasting context-window budget.
+
+Q. What problem does a reranker solve that retrieval alone doesn't? A. Initial retrieval (bi-encoder / ANN search) is fast but approximate — it scores query and chunk independently. A reranker (cross-encoder) scores the (query, chunk) pair jointly, which is far more accurate but too slow to run on the whole corpus — so it's used only on the retrieved top-k.
+
+Q. How would you reduce hallucination in a RAG pipeline? A. Constrain the prompt to answer only from retrieved context; instruct the model to say it doesn't know when context is insufficient; measure and monitor the Faithfulness metric; add a self-verification/Corrective-RAG step that checks retrieved context relevance before generating.
+
+RAG — Retrieval-Augmented Generation From Basics to Advanced | Study Notes
+
+
+
+Q. What is Reciprocal Rank Fusion (RRF) used for? A. To merge ranked result lists coming from different retrievers or different query reformulations into a single ranking, without needing to normalize incompatible similarity scores across sources.
+
+Q. When would you reach for GraphRAG over standard vector RAG? A. When questions require multi-hop reasoning across explicit relationships between entities (e.g. "who approved the contract that references clause X") — a knowledge graph captures those relationships directly, which flat vector similarity search cannot.
+
+Q. What are the two axes you must evaluate separately in a RAG system, and why? A. Retrieval quality (Context Precision/Recall) and generation quality (Faithfulness/Answer Relevancy) — because a strong LLM can still produce a bad answer if it was given poor context, and good retrieval can still be wasted if the LLM misuses or ignores the context it was given.
+
+End of document — structured from a RAG mind-map overview, expanded for full conceptual coverage and interview-style revision.

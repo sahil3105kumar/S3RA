@@ -5,7 +5,7 @@ description = "S3RA FastAPI Backend"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "duckduckgo-search>=8.1.1",
+    "ddgs>=9.15.0",
     "fastapi>=0.141.1",
     "groq>=1.6.0",
     "pydantic>=2.13.4",
