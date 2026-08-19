@@ -1,23 +1,32 @@
 from ddgs import DDGS
 from ddgs.exceptions import DDGSException
 from sentence_transformers import SentenceTransformer
-from supabase import create_client
 
-from config import SUPABASE_SERVICE_ROLE_KEY, SUPABASE_URL
+from auth import get_authenticated_client
 
-supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 model = SentenceTransformer("all-MiniLM-L6-v2")
 
 
-def search_internal_db(query: str, top_k=3):
+def search_internal_db(query: str, token: str, top_k=3):
     """Search the internal document store via the match_documents RPC.
 
+    `token` is the requesting user's raw access token (no "Bearer " prefix).
+    A fresh, per-request client is built from it so this query runs as that
+    authenticated user and is subject to RLS -- no service_role client is
+    used here, matching the per-request authenticated client decision for
+    anything tied to a live user request (`documents` is a shared read pool,
+    so RLS lets any authenticated user read all rows; this still ensures
+    logged-out/invalid-token callers get nothing, per the `to authenticated`
+    policy).
+
     Returns a list of matching chunks, or an empty list if there's nothing
-    relevant or the lookup couldn't be completed (network/DB error). Errors
-    are swallowed rather than raised so a down Supabase instance doesn't take
-    the whole agent turn down with it -- the caller just sees "no matches".
+    relevant or the lookup couldn't be completed (network/DB/auth error).
+    Errors are swallowed rather than raised so a down Supabase instance (or
+    an expired token) doesn't take the whole agent turn down with it -- the
+    caller just sees "no matches".
     """
     try:
+        supabase = get_authenticated_client(token)
         query_embedding = model.encode([query])[0].tolist()
         result = supabase.rpc("match_documents", {
             "query_embedding": query_embedding,

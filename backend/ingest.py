@@ -8,15 +8,13 @@ import os
 from pathlib import Path
 
 from sentence_transformers import SentenceTransformer
-from supabase import create_client
 
-from config import SUPABASE_SERVICE_ROLE_KEY, SUPABASE_URL
+from auth import get_authenticated_client
 from preprocessing.chunk import chunk_pages
 from preprocessing.clean import clean_pages
 from preprocessing.dedupe import filter_near_duplicates
 from preprocessing.extract import extract_pages
 
-supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 model = SentenceTransformer("all-MiniLM-L6-v2")
 
 # Derive the real limit from the model/tokenizer instead of hardcoding a
@@ -47,13 +45,24 @@ def _count_tokens(text: str) -> int:
     return len(model.tokenizer.encode(text, add_special_tokens=True, verbose=False))
 
 
-def ingest_file(path: str, owner_id: str | None = None) -> int:
+def ingest_file(path: str, token: str, owner_id: str) -> int:
     """Run the full pipeline for one file and insert the resulting chunks.
 
-    `owner_id` is accepted (but optional/unused for now) so this function's
-    signature already matches what per-user, RLS-scoped ingestion will need
-    once auth is wired up.
+    `token` is the uploading user's raw access token (no "Bearer " prefix);
+    it's used to build a per-request, RLS-scoped Supabase client so the
+    insert runs as that authenticated user rather than via service_role.
+    `owner_id` is that same user's id, stamped onto every row's `user_id` --
+    it must match `auth.uid()` for the token given, since the
+    `authenticated_insert_own` policy checks `auth.uid() = user_id` and will
+    reject the insert otherwise.
+
+    This is meant to be called synchronously from the upload endpoint (per
+    the decided flow: user waits while OCR + embedding runs, no queue/
+    service_role involved), so both `token` and `owner_id` should come
+    straight from that same request.
     """
+    supabase = get_authenticated_client(token)
+
     pages = extract_pages(path)
     pages = clean_pages(pages)
 
@@ -83,6 +92,7 @@ def ingest_file(path: str, owner_id: str | None = None) -> int:
         {
             "content": chunk.text,
             "embedding": embedding,
+            "user_id": owner_id,
             "metadata": {
                 "source": source,
                 "page_start": chunk.page_start,
@@ -99,8 +109,22 @@ def ingest_file(path: str, owner_id: str | None = None) -> int:
 
 
 if __name__ == "__main__":
+    # ingest_file now requires a real user token + owner_id (it inserts
+    # through a per-request, RLS-scoped client -- there's no service_role
+    # fallback). For local testing, log in via the frontend/Supabase and
+    # paste that session's access token + user id here as env vars, rather
+    # than running this against a fake/empty identity.
+    _token = os.environ.get("TEST_USER_TOKEN")
+    _owner_id = os.environ.get("TEST_USER_ID")
+    if not _token or not _owner_id:
+        raise SystemExit(
+            "Set TEST_USER_TOKEN and TEST_USER_ID (from a real logged-in "
+            "Supabase session) to run this script locally -- ingestion now "
+            "goes through RLS, so there's no anonymous/service_role path."
+        )
+
     # Resolve relative to this file's directory so this still works
     # regardless of the caller's cwd, without depending on package-relative
     # import machinery.
     _TEST_FILE = Path(__file__).resolve().parent / "data" / "test.txt"
-    ingest_file(str(_TEST_FILE))
+    ingest_file(str(_TEST_FILE), token=_token, owner_id=_owner_id)
