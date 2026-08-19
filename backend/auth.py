@@ -45,6 +45,28 @@ def get_user_id(authorization: str | None) -> str | None:
     return user.id
 
 
+def get_token(authorization: str | None) -> str | None:
+    """Extract the raw bearer token string from an `Authorization` header value.
+
+    Does the same header parsing as get_user_id, but returns the token
+    itself rather than a verified user id. Route handlers that need both
+    (e.g. /upload, which passes owner_id to ingest_file and token to
+    get_authenticated_client) should call this alongside require_user_id
+    instead of re-parsing the header themselves. Returns None for a
+    missing header, wrong scheme, or empty token -- same "no valid value"
+    contract as get_user_id, but with no network call since there's
+    nothing to verify here.
+    """
+    if not authorization:
+        return None
+
+    scheme, _, token = authorization.partition(" ")
+    if scheme.lower() != "bearer" or not token:
+        return None
+
+    return token
+
+
 def require_user_id(authorization: str | None) -> str:
     """Same as get_user_id, but raises FastAPI's 401 for protected routes.
 
