@@ -2,7 +2,7 @@ from supabase import create_client
 from sentence_transformers import SentenceTransformer
 from ddgs import DDGS
 
-from data.config import SUPABASE_SERVICE_ROLE_KEY, SUPABASE_URL
+from backend.config import SUPABASE_SERVICE_ROLE_KEY, SUPABASE_URL
 
 supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 model = SentenceTransformer("all-MiniLM-L6-v2")
