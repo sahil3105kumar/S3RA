@@ -18,6 +18,19 @@ def _required_env(*names: str) -> str:
 	raise RuntimeError(f"Missing required environment variable: {' or '.join(names)}")
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+
+# Overridable via env so we can swap models without a code change (e.g. if a
+# Groq-hosted model is deprecated). Defaults to a current Groq-hosted model
+# that supports tool calling, which the agentic loop in chat.py depends on.
+GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+
+# Frontend origin for CORS. No frontend exists yet (Milestone 7), so this
+# defaults to the conventional local Next.js dev port. Must be set to the
+# real deployed frontend URL in Milestone 8 -- CORS does not accept
+# wildcard origins alongside credentialed requests, and the Authorization
+# header on /chat and /upload makes this a credentialed request.
+FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "http://localhost:3000")
+
 SUPABASE_URL = _required_env("SUPABASE_URL")
 SUPABASE_SERVICE_ROLE_KEY = _required_env("SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_KEY")
 SUPABASE_KEY = SUPABASE_SERVICE_ROLE_KEY
