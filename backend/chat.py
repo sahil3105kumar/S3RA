@@ -9,14 +9,27 @@ run_chat() here, matching the ingest_file()/main.py split from Milestone 5.
 """
 
 import json
+import re
 from typing import Any, cast
 
+import groq
 from groq import Groq
 
 from config import GROQ_API_KEY, GROQ_MODEL
 from tools import search_internal_db, search_the_web
 
 _client = Groq(api_key=GROQ_API_KEY)
+
+# Some Groq-hosted models (notably openai/gpt-oss-*, trained on OpenAI's
+# "Harmony" format) occasionally reach for a tool baked into their own
+# training -- e.g. "open_file" -- instead of one of the tools actually
+# offered in this request. Groq validates the tool name server-side and
+# hard-rejects the whole completion with a 400 tool_use_failed when this
+# happens, rather than returning it as a normal assistant tool-call message
+# the loop could otherwise catch and redirect. _INVALID_TOOL_NAME_RE pulls
+# the hallucinated name out of that error's message for the corrective
+# retry in _run_agentic_loop below.
+_INVALID_TOOL_NAME_RE = re.compile(r"attempted to call tool '([^']+)'")
 
 # Hard cap on tool-call round trips per request. Not expected to be hit in
 # normal use (most questions resolve in 1-2 tool calls), but without a cap a
@@ -175,6 +188,31 @@ def _execute_tool_call(
     return f"Unknown tool: {name}", []
 
 
+def _extract_invalid_tool_name(error: groq.BadRequestError) -> str | None:
+    """If `error` is Groq's tool_use_failed response -- the model called a
+    tool name that wasn't in this request's tool list, or sent arguments
+    that didn't parse -- return the attempted tool name (or a generic
+    placeholder if the message didn't include one) so the caller can feed
+    it back to the model as a correction. Returns None for any other kind
+    of 400 (a genuinely malformed request, an unrelated validation error,
+    etc.), which the caller should let propagate rather than retry.
+
+    `error.body` mirrors the raw JSON error payload on Groq/OpenAI-style
+    SDKs (`{"error": {"message": ..., "code": ..., ...}}`); falls back to
+    parsing `str(error)` if the SDK version in use doesn't expose `.body`.
+    """
+    body = getattr(error, "body", None)
+    detail = body.get("error") if isinstance(body, dict) else None
+    message = detail.get("message", "") if isinstance(detail, dict) else str(error)
+    code = detail.get("code") if isinstance(detail, dict) else None
+
+    if code != "tool_use_failed":
+        return None
+
+    match = _INVALID_TOOL_NAME_RE.search(message)
+    return match.group(1) if match else "an unavailable tool"
+
+
 def _run_agentic_loop(
     message: str, user_id: str | None, token: str | None
 ) -> tuple[str, list[dict], list[str]]:
@@ -201,12 +239,47 @@ def _run_agentic_loop(
     retrieved_chunks: list[dict] = []
 
     for _ in range(MAX_TOOL_ROUNDS):
-        response = _client.chat.completions.create(
-            model=GROQ_MODEL,
-            messages=cast(Any, messages),
-            tools=cast(Any, tools),
-            tool_choice="auto",
-        )
+        try:
+            response = _client.chat.completions.create(
+                model=GROQ_MODEL,
+                messages=cast(Any, messages),
+                tools=cast(Any, tools),
+                tool_choice="auto",
+            )
+        except groq.BadRequestError as e:
+            bad_tool = _extract_invalid_tool_name(e)
+            if bad_tool is None:
+                # Some other kind of 400 (bad request shape, unsupported
+                # param, etc.) -- not something a corrective message can
+                # fix, so this is a real failure. Let it propagate to
+                # main.py's handler, same as before this fix.
+                raise
+
+            # Groq rejects the whole completion server-side when the model
+            # (some models, e.g. openai/gpt-oss-*, occasionally reach for a
+            # tool baked into their own training instead of one actually
+            # offered here) calls a tool that isn't in this request's tool
+            # list -- there's no assistant message to append in this case,
+            # just a corrective nudge, consuming one of MAX_TOOL_ROUNDS so a
+            # model that keeps doing this still can't loop forever.
+            print(
+                f"_run_agentic_loop: model attempted invalid tool {bad_tool!r}, "
+                "retrying with a corrective message"
+            )
+            valid_names = ", ".join(t["function"]["name"] for t in tools)
+            messages.append(
+                {
+                    "role": "user",
+                    "content": (
+                        f"The tool '{bad_tool}' does not exist. The only tools "
+                        f"available for this request are: {valid_names}. Call "
+                        "one of those if you need to, or answer directly if "
+                        "you don't."
+                    ),
+                }
+            )
+            continue
+
         msg = response.choices[0].message
 
         if not msg.tool_calls:
@@ -259,7 +332,23 @@ def _run_agentic_loop(
             "content": "Give your final answer now, based only on what you've already found.",
         }
     )
-    response = _client.chat.completions.create(model=GROQ_MODEL, messages=cast(Any, messages))
+    try:
+        response = _client.chat.completions.create(model=GROQ_MODEL, messages=cast(Any, messages))
+    except groq.BadRequestError as e:
+        if _extract_invalid_tool_name(e) is None:
+            raise
+        # No `tools` param is passed on this final call, so a genuine
+        # tool-call attempt shouldn't be possible here -- but some models
+        # can still emit tool-call-shaped output from their own training
+        # even when nothing was offered. There's no more budget left to
+        # retry (MAX_TOOL_ROUNDS is already exhausted), so this degrades to
+        # a plain apology instead of a 500.
+        print(f"_run_agentic_loop: invalid tool call on the final no-tools call, giving up gracefully: {e}")
+        return (
+            "I wasn't able to put together an answer this time -- could you try rephrasing your question?",
+            retrieved_chunks,
+            tools_used,
+        )
     return response.choices[0].message.content or "", retrieved_chunks, tools_used
 
 

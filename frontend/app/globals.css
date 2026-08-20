@@ -1,0 +1,44 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+* {
+  scrollbar-color: #2a3140 transparent;
+  scrollbar-width: thin;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: #2a3140;
+  border-radius: 999px;
+}
+
+body {
+  background-color: #0a0d12;
+  color: #e4e7ec;
+  background-image:
+    radial-gradient(60rem 30rem at 15% -10%, rgba(94, 234, 212, 0.06), transparent),
+    radial-gradient(40rem 24rem at 100% 0%, rgba(240, 180, 41, 0.04), transparent);
+}
+
+@layer utilities {
+  .focus-ring {
+    @apply outline-none focus-visible:ring-2 focus-visible:ring-signal/70 focus-visible:ring-offset-2 focus-visible:ring-offset-ink-950;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -22,7 +22,7 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 # Overridable via env so we can swap models without a code change (e.g. if a
 # Groq-hosted model is deprecated). Defaults to a current Groq-hosted model
 # that supports tool calling, which the agentic loop in chat.py depends on.
-GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+GROQ_MODEL = os.getenv("GROQ_MODEL", "qwen/qwen3.6-27b")
 
 # Frontend origin for CORS. No frontend exists yet (Milestone 7), so this
 # defaults to the conventional local Next.js dev port. Must be set to the
