@@ -1,3 +1,5 @@
+from typing import Any, cast
+
 from ddgs import DDGS
 from ddgs.exceptions import DDGSException
 from sentence_transformers import SentenceTransformer
@@ -7,7 +9,7 @@ from auth import get_authenticated_client
 model = SentenceTransformer("all-MiniLM-L6-v2")
 
 
-def search_internal_db(query: str, token: str, top_k=3):
+def search_internal_db(query: str, token: str, top_k: int = 3) -> list[dict[str, Any]]:
     """Search the internal document store via the match_documents RPC.
 
     `token` is the requesting user's raw access token (no "Bearer " prefix).
@@ -40,7 +42,11 @@ def search_internal_db(query: str, token: str, top_k=3):
         print(f"search_internal_db: no matches for query={query!r}")
         return []
 
-    return result.data
+    # match_documents is a SETOF-returning RPC, so this is always a list of
+    # row dicts at runtime -- postgrest-py's stubs just can't express that
+    # generically (RPC responses are typed as the broad JSON union), which
+    # is what the cast is narrowing back down for callers/type-checking.
+    return cast(list, result.data)
 
 
 def search_the_web(query: str, top_k=3):
