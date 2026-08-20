@@ -404,6 +404,38 @@ def _groundedness_check(
     return draft_answer
 
 
+# Some Groq-hosted models (esp. openai/gpt-oss-*, trained on OpenAI's
+# "Harmony"/browsing format) emit citation markers like "【5†L1-L4】" out of
+# habit. Nothing in this pipeline produces footnotes for them to resolve
+# against, so on the frontend they just show up as literal noise -- strip
+# them here rather than teach the frontend to special-case them.
+_CITATION_ARTIFACT_RE = re.compile(r"【[^】]*】")
+
+# The model writes LaTeX with \[ \] (display) and \( \) (inline)
+# delimiters -- valid LaTeX, but not what the frontend's markdown+math
+# renderer (remark-math) looks for, which is $$ $$ and $ $. Converting
+# here keeps this a pure output-formatting concern instead of fighting the
+# model's prompt to change its LaTeX style.
+_LATEX_DISPLAY_RE = re.compile(r"\\\[(.+?)\\\]", re.DOTALL)
+_LATEX_INLINE_RE = re.compile(r"\\\((.+?)\\\)", re.DOTALL)
+
+
+def _postprocess_answer(answer: str) -> str:
+    """Clean up raw model output before it's sent to the frontend.
+
+    Runs after the groundedness check, on whatever text is actually going
+    out the door, so it catches artifacts regardless of whether they came
+    from the original draft or a revised_answer.
+    """
+    cleaned = _CITATION_ARTIFACT_RE.sub("", answer)
+    cleaned = _LATEX_DISPLAY_RE.sub(lambda m: f"\n\n$$\n{m.group(1).strip()}\n$$\n\n", cleaned)
+    cleaned = _LATEX_INLINE_RE.sub(lambda m: f"${m.group(1).strip()}$", cleaned)
+    # Collapse the blank-line runs the delimiter conversion above can leave
+    # behind (e.g. a display equation that already sat on its own line).
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+    return cleaned.strip()
+
+
 def _build_sources(retrieved_chunks: list[dict]) -> list[dict]:
     """Dedupe retrieved chunks down to distinct (source, page) citations.
 
@@ -439,7 +471,8 @@ def run_chat(message: str, user_id: str | None, token: str | None) -> dict:
     {"answer": str, "sources": [{"source": str, "page": ...}], "tool_used": [str]}
     """
     draft_answer, retrieved_chunks, tools_used = _run_agentic_loop(message, user_id, token)
-    final_answer = _groundedness_check(draft_answer, retrieved_chunks, tools_used)
+    checked_answer = _groundedness_check(draft_answer, retrieved_chunks, tools_used)
+    final_answer = _postprocess_answer(checked_answer)
 
     return {
         "answer": final_answer,
