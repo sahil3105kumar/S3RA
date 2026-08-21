@@ -22,4 +22,24 @@ dependencies = [
 package = false
 
 [dependency-groups]
-dev = []
+dev = [
+    "pytest>=8.3.4",
+    "pytest-mock>=3.14.0",
+    "httpx>=0.28.1",
+    "ruff>=0.8.4",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# main.py and everything it imports uses bare imports (e.g. `from config
+# import ...`) relative to backend/ as the working root -- this makes sure
+# pytest resolves those the same way regardless of the directory CI (or a
+# person) happens to invoke it from.
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]

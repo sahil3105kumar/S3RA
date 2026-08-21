@@ -15,8 +15,8 @@ different versions of the same one) don't all report the same limit.
 DEFAULT_MAX_TOKENS below is only a fallback for standalone/testing use.
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable
 
 from preprocessing.extract import PageText
 from preprocessing.headings import is_heading_line

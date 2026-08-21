@@ -32,7 +32,7 @@ def extract_pages(path: str) -> list[PageText]:
 
 
 def _extract_txt(path: str) -> list[PageText]:
-    with open(path, "r", encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:
         text = f.read()
     return [PageText(page_number=1, text=text)]
 

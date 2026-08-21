@@ -343,9 +343,13 @@ def _run_agentic_loop(
         # even when nothing was offered. There's no more budget left to
         # retry (MAX_TOOL_ROUNDS is already exhausted), so this degrades to
         # a plain apology instead of a 500.
-        print(f"_run_agentic_loop: invalid tool call on the final no-tools call, giving up gracefully: {e}")
+        print(
+            "_run_agentic_loop: invalid tool call on the final no-tools call, "
+            f"giving up gracefully: {e}"
+        )
         return (
-            "I wasn't able to put together an answer this time -- could you try rephrasing your question?",
+            "I wasn't able to put together an answer this time -- could you "
+            "try rephrasing your question?",
             retrieved_chunks,
             tools_used,
         )

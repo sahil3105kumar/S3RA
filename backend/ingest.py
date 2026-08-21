@@ -100,7 +100,7 @@ def ingest_file(path: str, token: str, owner_id: str) -> int:
                 "section": chunk.section,
             },
         }
-        for chunk, embedding in zip(chunks, embeddings)
+        for chunk, embedding in zip(chunks, embeddings, strict=True)
     ]
 
     supabase.table("documents").insert(rows).execute()
