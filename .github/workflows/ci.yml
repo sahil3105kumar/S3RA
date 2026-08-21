@@ -66,9 +66,13 @@ jobs:
         run: npx tsc --noEmit
 
       - name: Build
-        # Placeholder URL is enough here -- this step exists to catch build
-        # failures (missing modules, bad imports, broken pages), not to
-        # validate connectivity to a real backend.
+        # /auth/callback reads Supabase env vars at module load time via
+        # lib/supabaseClient.ts, and Next prerenders that page at build
+        # time -- so this needs real (or at least well-formed) Supabase
+        # values, not just NEXT_PUBLIC_API_URL, or the build fails here
+        # even though nothing in this step makes a live network call.
         env:
           NEXT_PUBLIC_API_URL: http://localhost:8000
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
         run: npm run build
