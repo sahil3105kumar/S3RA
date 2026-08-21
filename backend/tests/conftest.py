@@ -46,7 +46,7 @@ if "sentence_transformers" not in sys.modules:
         def encode(self, texts, *args, **kwargs):
             return [[0.0] * 384 for _ in texts]
 
-    _fake_st_module.SentenceTransformer = _FakeSentenceTransformer
+    _fake_st_module.SentenceTransformer = _FakeSentenceTransformer #type:ignore
     sys.modules["sentence_transformers"] = _fake_st_module
 
 
@@ -63,7 +63,7 @@ if "ddgs" not in sys.modules:
         def text(self, *args, **kwargs):
             return []
 
-    _fake_ddgs_module.DDGS = _FakeDDGS
+    _fake_ddgs_module.DDGS = _FakeDDGS #type:ignore
     sys.modules["ddgs"] = _fake_ddgs_module
 
     _fake_ddgs_exceptions_module = ModuleType("ddgs.exceptions")
@@ -71,7 +71,7 @@ if "ddgs" not in sys.modules:
     class _FakeDDGSException(Exception):
         pass
 
-    _fake_ddgs_exceptions_module.DDGSException = _FakeDDGSException
+    _fake_ddgs_exceptions_module.DDGSException = _FakeDDGSException #type:ignore
     sys.modules["ddgs.exceptions"] = _fake_ddgs_exceptions_module
 
 
