@@ -9,7 +9,7 @@
 }
 
 * {
-  scrollbar-color: #2a3140 transparent;
+  scrollbar-color: #4d4033 transparent;
   scrollbar-width: thin;
 }
 
@@ -19,16 +19,16 @@
 }
 
 *::-webkit-scrollbar-thumb {
-  background: #2a3140;
+  background: #4d4033;
   border-radius: 999px;
 }
 
 body {
-  background-color: #0a0d12;
-  color: #e4e7ec;
+  background-color: #1a1512;
+  color: #f5ecdd;
   background-image:
-    radial-gradient(60rem 30rem at 15% -10%, rgba(94, 234, 212, 0.06), transparent),
-    radial-gradient(40rem 24rem at 100% 0%, rgba(240, 180, 41, 0.04), transparent);
+    radial-gradient(60rem 30rem at 15% -10%, rgba(224, 144, 74, 0.07), transparent),
+    radial-gradient(40rem 24rem at 100% 0%, rgba(242, 201, 76, 0.05), transparent);
 }
 
 @layer utilities {

@@ -6,24 +6,24 @@ const config: Config = {
     extend: {
       colors: {
         ink: {
-          950: "#0a0d12",
-          900: "#10141b",
-          800: "#161b24",
-          700: "#1f2530",
-          600: "#2a3140",
-          500: "#3a4356",
-          400: "#5b6577",
-          300: "#8891a1",
-          200: "#b7bdc8",
-          100: "#e4e7ec",
+          950: "#1a1512",
+          900: "#211a15",
+          800: "#2b221b",
+          700: "#3a2f26",
+          600: "#4d4033",
+          500: "#6b5c48",
+          400: "#8f7d64",
+          300: "#b3a48c",
+          200: "#d9cdb8",
+          100: "#f5ecdd",
         },
         signal: {
-          DEFAULT: "#5eead4",
-          dim: "#2dd4bf",
-          bright: "#99f6e4",
+          DEFAULT: "#e0904a",
+          dim: "#c07536",
+          bright: "#f4bb80",
         },
         flag: {
-          DEFAULT: "#f0b429",
+          DEFAULT: "#f2c94c",
         },
       },
       fontFamily: {
@@ -32,7 +32,7 @@ const config: Config = {
         mono: ["var(--font-jetbrains-mono)", "monospace"],
       },
       boxShadow: {
-        glow: "0 0 0 1px rgba(94, 234, 212, 0.15), 0 0 24px -8px rgba(94, 234, 212, 0.35)",
+        glow: "0 0 0 1px rgba(224, 144, 74, 0.15), 0 0 24px -8px rgba(224, 144, 74, 0.35)",
       },
       keyframes: {
         pulseDot: {

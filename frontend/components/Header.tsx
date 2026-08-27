@@ -67,9 +67,9 @@ export function Header({ session, sessionLoading, onUploadClick }: HeaderProps) 
 function SignalMark() {
   return (
     <svg width="26" height="26" viewBox="0 0 26 26" fill="none" aria-hidden="true">
-      <circle cx="13" cy="13" r="12" stroke="#2a3140" strokeWidth="1.5" />
-      <circle cx="13" cy="13" r="7.5" stroke="#5eead4" strokeWidth="1.5" opacity="0.55" />
-      <circle cx="13" cy="13" r="2.2" fill="#5eead4" />
+      <circle cx="13" cy="13" r="12" stroke="#4d4033" strokeWidth="1.5" />
+      <circle cx="13" cy="13" r="7.5" stroke="#e0904a" strokeWidth="1.5" opacity="0.55" />
+      <circle cx="13" cy="13" r="2.2" fill="#e0904a" />
     </svg>
   );
 }
