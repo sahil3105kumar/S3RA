@@ -7,42 +7,16 @@ preprocessing/extract.py's dispatch.
 import os
 from pathlib import Path
 
-from sentence_transformers import SentenceTransformer
-
 from auth import get_authenticated_client
+from embeddings import MODEL_MAX_SEQ_LENGTH, count_tokens, embed
 from preprocessing.chunk import chunk_pages
 from preprocessing.clean import clean_pages
 from preprocessing.dedupe import filter_near_duplicates
 from preprocessing.extract import extract_pages
 
-model = SentenceTransformer("all-MiniLM-L6-v2")
 
-# Derive the real limit from the model/tokenizer instead of hardcoding a
-# number: different sentence-transformers models (or even different
-# versions of the same one) don't all report the same max_seq_length, and
-# the tokenizer's own model_max_length isn't guaranteed to match it either.
-# We take whichever is smaller, then leave a safety margin so rounding in
-# our own token-counting never quietly pushes a chunk over the real limit.
-_TOKENIZER_MAX = getattr(model.tokenizer, "model_max_length", None)
-_MODEL_MAX = getattr(model, "max_seq_length", None)
-_CANDIDATE_LIMITS = [v for v in (_TOKENIZER_MAX, _MODEL_MAX) if v and v < 100_000]
-_REAL_MAX_TOKENS = min(_CANDIDATE_LIMITS) if _CANDIDATE_LIMITS else 256
 _SAFETY_MARGIN = 8  # headroom for special tokens + any residual rounding
-CHUNK_MAX_TOKENS = max(32, _REAL_MAX_TOKENS - _SAFETY_MARGIN)
-
-
-def _count_tokens(text: str) -> int:
-    """Count tokens the way the model will actually see them, including
-    special tokens ([CLS]/[SEP]), so chunk sizing isn't an underestimate.
-
-    verbose=False suppresses HF's "sequence longer than max length" warning
-    for this call specifically -- it fires any time .encode() measures a
-    string longer than model_max_length, even when we're just measuring
-    length to decide whether to split it, not actually feeding it to the
-    model. It's not a sign of a problem; it's noise from using encode() as
-    a ruler.
-    """
-    return len(model.tokenizer.encode(text, add_special_tokens=True, verbose=False))
+CHUNK_MAX_TOKENS = max(32, MODEL_MAX_SEQ_LENGTH - _SAFETY_MARGIN)
 
 
 def ingest_file(path: str, token: str, owner_id: str) -> int:
@@ -66,7 +40,12 @@ def ingest_file(path: str, token: str, owner_id: str) -> int:
     pages = extract_pages(path)
     pages = clean_pages(pages)
 
-    chunks = chunk_pages(pages, count_tokens=_count_tokens, max_tokens=CHUNK_MAX_TOKENS)
+    chunks = chunk_pages(
+        pages,
+        count_tokens=count_tokens,
+        max_tokens=CHUNK_MAX_TOKENS,
+    )
+
     if not chunks:
         print(f"No content extracted from {path}; nothing to insert.")
         return 0
@@ -74,16 +53,29 @@ def ingest_file(path: str, token: str, owner_id: str) -> int:
     # Verify the packing logic actually held, rather than assuming it did.
     # If this ever fires, chunk.py's budget-checking has a real bug -- it
     # means a chunk reached here already over the limit we asked for.
-    oversized = [c for c in chunks if _count_tokens(c.text) > CHUNK_MAX_TOKENS]
+    oversized = [
+        c for c in chunks
+        if count_tokens(c.text) > CHUNK_MAX_TOKENS
+    ]
+
     if oversized:
         print(
-            f"WARNING: {len(oversized)} chunk(s) exceeded {CHUNK_MAX_TOKENS} tokens "
-            f"after chunking (max seen: {max(_count_tokens(c.text) for c in oversized)}). "
+            f"WARNING: {len(oversized)} chunk(s) exceeded "
+            f"{CHUNK_MAX_TOKENS} tokens after chunking "
+            f"(max seen: {max(count_tokens(c.text) for c in oversized)}). "
             f"This means chunk.py's budget check has a bug -- please report it."
         )
 
     texts = [c.text for c in chunks]
-    embeddings = model.encode(texts).tolist()
+
+    try:
+        embeddings = embed(texts)
+    except Exception as exc:
+        print(f"Embedding generation failed for {path}: {exc}")
+        raise RuntimeError(
+            "Failed to generate embeddings. "
+            "The Hugging Face inference service may be temporarily unavailable."
+        ) from exc
 
     chunks, embeddings = filter_near_duplicates(chunks, embeddings)
 
@@ -116,6 +108,7 @@ if __name__ == "__main__":
     # than running this against a fake/empty identity.
     _token = os.environ.get("TEST_USER_TOKEN")
     _owner_id = os.environ.get("TEST_USER_ID")
+
     if not _token or not _owner_id:
         raise SystemExit(
             "Set TEST_USER_TOKEN and TEST_USER_ID (from a real logged-in "
@@ -127,4 +120,9 @@ if __name__ == "__main__":
     # regardless of the caller's cwd, without depending on package-relative
     # import machinery.
     _TEST_FILE = Path(__file__).resolve().parent / "data" / "test.txt"
-    ingest_file(str(_TEST_FILE), token=_token, owner_id=_owner_id)
+
+    ingest_file(
+        str(_TEST_FILE),
+        token=_token,
+        owner_id=_owner_id,
+    )

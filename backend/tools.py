@@ -2,11 +2,9 @@ from typing import Any, cast
 
 from ddgs import DDGS
 from ddgs.exceptions import DDGSException
-from sentence_transformers import SentenceTransformer
 
 from auth import get_authenticated_client
-
-model = SentenceTransformer("all-MiniLM-L6-v2")
+from embeddings import embed
 
 
 def search_internal_db(query: str, token: str, top_k: int = 3) -> list[dict[str, Any]]:
@@ -29,7 +27,7 @@ def search_internal_db(query: str, token: str, top_k: int = 3) -> list[dict[str,
     """
     try:
         supabase = get_authenticated_client(token)
-        query_embedding = model.encode([query])[0].tolist()
+        query_embedding = embed([query])[0]
         result = supabase.rpc("match_documents", {
             "query_embedding": query_embedding,
             "match_count": top_k

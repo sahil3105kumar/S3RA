@@ -30,6 +30,8 @@ GROQ_MODEL = os.getenv("GROQ_MODEL", "qwen/qwen3.6-27b")
 # header on /chat and /upload makes this a credentialed request.
 FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "http://localhost:3000")
 
+HF_TOKEN = _required_env("HF_TOKEN")
+
 SUPABASE_URL = _required_env("SUPABASE_URL")
 SUPABASE_SERVICE_ROLE_KEY = _required_env("SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_KEY")
 SUPABASE_KEY = SUPABASE_SERVICE_ROLE_KEY

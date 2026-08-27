@@ -13,7 +13,8 @@ dependencies = [
     "pypdf>=6.16.1",
     "python-dotenv>=1.2.3",
     "python-multipart>=0.0.32",
-    "sentence-transformers>=6.0.0",
+    "huggingface-hub>=0.27.0",
+    "tokenizers>=0.21.0", 
     "supabase>=2.31.0",
     "uvicorn[standard]>=0.52.3",
 ]
