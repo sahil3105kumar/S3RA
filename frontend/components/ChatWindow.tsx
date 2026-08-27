@@ -59,15 +59,17 @@ export function ChatWindow({ session }: { session: Session | null }) {
   }
 
   return (
-    <div className="mx-auto flex h-full w-full max-w-4xl flex-col">
-      <div ref={scrollRef} className="flex-1 space-y-4 overflow-y-auto px-4 py-6 lg:px-8">
-        {messages.length === 0 ? <EmptyState loggedIn={!!session} /> : null}
-        {messages.map((m) => (
-          <ChatMessageBubble key={m.id} message={m} />
-        ))}
+    <div className="flex h-full w-full flex-col">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto">
+        <div className="mx-auto max-w-4xl space-y-4 px-4 py-6 lg:px-8">
+          {messages.length === 0 ? <EmptyState loggedIn={!!session} /> : null}
+          {messages.map((m) => (
+            <ChatMessageBubble key={m.id} message={m} />
+          ))}
+        </div>
       </div>
 
-      <div className="border-t border-ink-700 bg-ink-950/80 px-4 py-3.5 backdrop-blur lg:px-8">
+      <div className="mx-auto w-full max-w-4xl border-t border-ink-700 bg-ink-950/80 px-4 py-3.5 backdrop-blur lg:px-8">
         <ChatInput onSend={handleSend} disabled={sending} />
         <p className="mt-2 text-center text-[11px] text-ink-500">
           {session
