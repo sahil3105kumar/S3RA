@@ -1,7 +1,6 @@
-"""Ingestion pipeline: file -> extract -> clean -> chunk -> embed -> dedupe -> insert.
+"""ingestion pipeline from file to db rows.
 
-Supports .txt and .pdf today. Other formats can be added later by extending
-preprocessing/extract.py's dispatch.
+current support includes txt and pdf.
 """
 
 import os
@@ -15,25 +14,16 @@ from preprocessing.dedupe import filter_near_duplicates
 from preprocessing.extract import extract_pages
 
 
-_SAFETY_MARGIN = 8  # headroom for special tokens + any residual rounding
+_SAFETY_MARGIN = 8  # reserve room for special tokens and rounding drift.
 CHUNK_MAX_TOKENS = max(32, MODEL_MAX_SEQ_LENGTH - _SAFETY_MARGIN)
 
 
 def ingest_file(path: str, token: str, owner_id: str) -> int:
-    """Run the full pipeline for one file and insert the resulting chunks.
+    """run full ingestion for one file and insert generated chunks.
 
-    `token` is the uploading user's raw access token (no "Bearer " prefix);
-    it's used to build a per-request, RLS-scoped Supabase client so the
-    insert runs as that authenticated user rather than via service_role.
-    `owner_id` is that same user's id, stamped onto every row's `user_id` --
-    it must match `auth.uid()` for the token given, since the
-    `authenticated_insert_own` policy checks `auth.uid() = user_id` and will
-    reject the insert otherwise.
-
-    This is meant to be called synchronously from the upload endpoint (per
-    the decided flow: user waits while OCR + embedding runs, no queue/
-    service_role involved), so both `token` and `owner_id` should come
-    straight from that same request.
+    token is the uploader token without bearer prefix.
+    owner id is stamped on rows and must match auth uid under rls policy.
+    upload flow is synchronous, so token and owner id come from same request.
     """
     supabase = get_authenticated_client(token)
 
@@ -50,9 +40,8 @@ def ingest_file(path: str, token: str, owner_id: str) -> int:
         print(f"No content extracted from {path}; nothing to insert.")
         return 0
 
-    # Verify the packing logic actually held, rather than assuming it did.
-    # If this ever fires, chunk.py's budget-checking has a real bug -- it
-    # means a chunk reached here already over the limit we asked for.
+    # verify chunk token limits were respected.
+    # if this fires, chunk budgeting has a real bug.
     oversized = [
         c for c in chunks
         if count_tokens(c.text) > CHUNK_MAX_TOKENS
@@ -101,11 +90,8 @@ def ingest_file(path: str, token: str, owner_id: str) -> int:
 
 
 if __name__ == "__main__":
-    # ingest_file now requires a real user token + owner_id (it inserts
-    # through a per-request, RLS-scoped client -- there's no service_role
-    # fallback). For local testing, log in via the frontend/Supabase and
-    # paste that session's access token + user id here as env vars, rather
-    # than running this against a fake/empty identity.
+    # ingest file needs a real user token and owner id.
+    # use values from a real logged in session for local tests.
     _token = os.environ.get("TEST_USER_TOKEN")
     _owner_id = os.environ.get("TEST_USER_ID")
 
@@ -116,9 +102,7 @@ if __name__ == "__main__":
             "goes through RLS, so there's no anonymous/service_role path."
         )
 
-    # Resolve relative to this file's directory so this still works
-    # regardless of the caller's cwd, without depending on package-relative
-    # import machinery.
+    # resolve test file from this directory, not caller cwd.
     _TEST_FILE = Path(__file__).resolve().parent / "data" / "test.txt"
 
     ingest_file(

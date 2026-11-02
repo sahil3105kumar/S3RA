@@ -1,11 +1,6 @@
-"""Tests for POST /chat.
+"""tests for post chat route.
 
-Groq is mocked at chat._client (the module-level Groq client instance) so
-no real API call is ever made. search_the_web/search_internal_db are
-mocked at their chat.py-bound names (chat.py does
-`from tools import search_internal_db, search_the_web`, so those are
-separate module attributes on `chat`, not on `tools`) so no real DDGS or
-Supabase call happens either.
+groq and tool calls are mocked so tests stay local and deterministic.
 """
 
 from unittest.mock import MagicMock
@@ -40,9 +35,9 @@ class _FakeCompletion:
 
 
 def test_chat_anonymous_direct_answer_no_tool_call(client, monkeypatch):
-    """Model answers without calling any tool -- the simplest path through
-    the agentic loop. Also checks that an anonymous request is never even
-    offered search_internal_db, per the auth-scoped tool list."""
+    """model answers directly without calling tools.
+    also checks anonymous calls only get web search tool access.
+    """
     import chat as chat_module
 
     fake_client = MagicMock()
@@ -67,8 +62,7 @@ def test_chat_anonymous_direct_answer_no_tool_call(client, monkeypatch):
 
 
 def test_chat_calls_web_search_tool(client, monkeypatch):
-    """First Groq response requests a tool call; second returns the final
-    answer once the tool result has been fed back in."""
+    """first response asks for web search tool, second returns final answer."""
     import chat as chat_module
 
     tool_call = _FakeToolCall("call_1", "search_the_web", '{"query": "latest AI news"}')
@@ -95,8 +89,7 @@ def test_chat_calls_web_search_tool(client, monkeypatch):
 
 
 def test_chat_authenticated_uses_doc_search_with_groundedness(client, monkeypatch):
-    """Authenticated request: doc search is offered and used, and the
-    groundedness check's revised_answer is what actually goes out."""
+    """authenticated request uses doc search and groundedness revised answer."""
     import chat as chat_module
     import main as main_module
 
@@ -143,8 +136,7 @@ def test_chat_authenticated_uses_doc_search_with_groundedness(client, monkeypatc
 
 
 def test_chat_groq_failure_returns_500(client, monkeypatch):
-    """An unexpected exception from the Groq client should surface as a
-    clean 500 through main.py's handler, not an unhandled crash."""
+    """unexpected groq errors should surface as clean 500 responses."""
     import chat as chat_module
 
     fake_client = MagicMock()

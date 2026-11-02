@@ -42,7 +42,7 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
         value={value}
         onChange={handleInput}
         onKeyDown={handleKeyDown}
-        placeholder="Ask anything — S3RA decides what to search"
+        placeholder="Ask anything - S3RA decides what to search"
         rows={1}
         className="max-h-40 flex-1 resize-none bg-transparent px-2 py-1.5 text-[14px] text-ink-100 placeholder:text-ink-400 focus:outline-none"
       />

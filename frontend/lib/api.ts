@@ -24,15 +24,14 @@ async function parseErrorDetail(res: Response): Promise<string> {
     const body = await res.json();
     if (typeof body?.detail === "string") return body.detail;
   } catch {
-    // response wasn't JSON -- fall through to the generic message below
+    // response wasnt json, fall through to generic message.
   }
   return `Request failed with status ${res.status}`;
 }
 
 /**
- * POST /chat. Auth is optional on the backend: the Authorization header is
- * only attached when an access token is passed in, so a logged-out caller
- * gets web-search-only answers exactly as the backend expects.
+ * post chat endpoint.
+ * auth is optional, so header is added only when token exists.
  */
 export async function sendChatMessage(message: string, accessToken?: string | null): Promise<ChatResponse> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
@@ -54,9 +53,8 @@ export async function sendChatMessage(message: string, accessToken?: string | nu
 }
 
 /**
- * POST /upload. Login is required by the backend (require_user_id raises
- * 401 without a token), so the JWT is always attached here -- callers of
- * this function should already have gated the UI behind a session.
+ * post upload endpoint.
+ * login is required, so jwt is always attached here.
  */
 export async function uploadDocument(file: File, accessToken: string): Promise<UploadResponse> {
   const formData = new FormData();

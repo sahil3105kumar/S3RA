@@ -5,12 +5,9 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
 /**
- * Google/GitHub redirect here after OAuth. There's no server-side code
- * exchange to do -- the Supabase browser client has detectSessionInUrl
- * enabled, so it reads the ?code= param off this page's own URL and
- * exchanges it for a session automatically. This page just waits for that
- * to happen (via onAuthStateChange, with a short timeout fallback) and
- * then sends the user back to the chat.
+ * google and github oauth redirect lands here.
+ * supabase browser client exchanges code from url for session.
+ * this page waits for session then routes back to chat.
  */
 export default function AuthCallbackPage() {
   const router = useRouter();
@@ -27,7 +24,7 @@ export default function AuthCallbackPage() {
       }
     });
 
-    // Session may already have resolved before the listener above attached.
+    // session may already resolve before listener attaches.
     supabase.auth.getSession().then(({ data }) => {
       if (settled) return;
       if (data.session) {

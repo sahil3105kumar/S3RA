@@ -1,8 +1,6 @@
-"""Auth helpers: verify a Supabase-issued access token and extract the user id.
+"""auth helpers for token verification and user id extraction.
 
-Verification goes through Supabase's own Auth API (`auth.get_user`) rather
-than decoding the JWT locally, so there's no separate JWT secret to manage
-and token revocation/expiry is handled by Supabase itself.
+verification uses supabase auth api instead of local jwt decoding.
 """
 
 from supabase import Client, create_client
@@ -13,17 +11,10 @@ _auth_client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 
 def get_user_id(authorization: str | None) -> str | None:
-    """Extract and verify the user id from an `Authorization` header value.
+    """extract and verify user id from authorization header.
 
-    Returns the user's id (str) if the header carries a valid, non-expired
-    Supabase access token. Returns None for anything else -- missing header,
-    wrong scheme, empty token, expired/invalid/revoked token, or a network
-    error talking to Supabase. Never raises, so callers (route handlers,
-    optional-auth endpoints) can treat "no user" uniformly without a
-    try/except at every call site.
-
-    `authorization` is the raw header value, e.g. "Bearer eyJhbGciOi...".
-    Pass `request.headers.get("authorization")` from a FastAPI route.
+    returns user id for valid token, else none.
+    no exceptions are raised, so optional auth flows stay simple.
     """
     if not authorization:
         return None
@@ -46,16 +37,9 @@ def get_user_id(authorization: str | None) -> str | None:
 
 
 def get_token(authorization: str | None) -> str | None:
-    """Extract the raw bearer token string from an `Authorization` header value.
+    """extract raw bearer token string from authorization header.
 
-    Does the same header parsing as get_user_id, but returns the token
-    itself rather than a verified user id. Route handlers that need both
-    (e.g. /upload, which passes owner_id to ingest_file and token to
-    get_authenticated_client) should call this alongside require_user_id
-    instead of re-parsing the header themselves. Returns None for a
-    missing header, wrong scheme, or empty token -- same "no valid value"
-    contract as get_user_id, but with no network call since there's
-    nothing to verify here.
+    returns token when header is valid, else none.
     """
     if not authorization:
         return None
@@ -68,11 +52,7 @@ def get_token(authorization: str | None) -> str | None:
 
 
 def require_user_id(authorization: str | None) -> str:
-    """Same as get_user_id, but raises FastAPI's 401 for protected routes.
-
-    Use this in route handlers that must have a logged-in user (e.g. chat,
-    upload). Use get_user_id directly for routes where auth is optional.
-    """
+    """same as get user id, but raises 401 for protected routes."""
     from fastapi import HTTPException
 
     user_id = get_user_id(authorization)
@@ -82,20 +62,9 @@ def require_user_id(authorization: str | None) -> str:
 
 
 def get_authenticated_client(token: str) -> Client:
-    """Build a Supabase client scoped to one user's session, for one request.
+    """build per request supabase client scoped to one user session.
 
-    Uses the anon key (safe, no special privileges on its own) plus the
-    user's own access token attached on top -- Postgres then sees the
-    request as the `authenticated` role with `auth.uid()` resolving to this
-    user, so RLS policies apply exactly as written (issue 3/4's decision:
-    per-request authenticated client, no service_role, for anything tied to
-    a live user request).
-
-    `token` is the bare access token (no "Bearer " prefix) -- callers that
-    already have a verified user id from get_user_id/require_user_id should
-    reuse the same raw token here rather than re-parsing the header.
-
-    Build a fresh client per request; don't cache/reuse across users.
+    use anon key plus user token so rls applies for that user.
     """
     client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
     client.postgrest.auth(token)

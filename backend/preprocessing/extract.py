@@ -1,8 +1,7 @@
-"""Extract raw text from source files, keeping page boundaries where they exist.
+"""extract raw text and keep page boundaries when available.
 
-A .txt file has no notion of pages, so it comes back as a single "page".
-A .pdf file comes back as one entry per page, so downstream steps (cleaning,
-chunking) can attach an accurate page number to every chunk.
+txt files return one page entry.
+pdf files return one entry per page for clean chunk mapping.
 """
 
 from dataclasses import dataclass
@@ -11,8 +10,8 @@ from pathlib import Path
 
 @dataclass
 class PageText:
-    """Raw text for a single page (or the whole file, for non-paginated formats)."""
-    page_number: int  # 1-indexed
+    """raw text for one page, or full file for non paged formats."""
+    page_number: int  # 1 indexed
     text: str
 
 
@@ -20,7 +19,7 @@ SUPPORTED_EXTENSIONS = {".txt", ".pdf"}
 
 
 def extract_pages(path: str) -> list[PageText]:
-    """Dispatch to the right extractor based on file extension."""
+    """dispatch to the right extractor by file extension."""
     ext = Path(path).suffix.lower()
     if ext == ".txt":
         return _extract_txt(path)

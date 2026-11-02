@@ -11,9 +11,8 @@ interface LoginButtonsProps {
 }
 
 /**
- * The only sign-in surface in the app. Deliberately has no email/password
- * fields -- Supabase Auth is configured for Google/GitHub OAuth only, so
- * there's nothing for a password form to submit to.
+ * only sign in surface in the app.
+ * no email password fields, auth is google and github oauth only.
  */
 export function LoginButtons({ compact = false, onStart }: LoginButtonsProps) {
   const [pending, setPending] = useState<Provider | null>(null);
@@ -28,8 +27,8 @@ export function LoginButtons({ compact = false, onStart }: LoginButtonsProps) {
       },
     });
     if (error) {
-      // Redirect away from the page is the normal success path, so
-      // reaching this line at all means the OAuth kickoff itself failed.
+      // redirect is normal success path.
+      // reaching this line means oauth kickoff failed.
       console.error(`${provider} sign-in failed:`, error.message);
       setPending(null);
     }

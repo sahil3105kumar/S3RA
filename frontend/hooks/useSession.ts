@@ -10,13 +10,8 @@ interface SessionState {
 }
 
 /**
- * Client-side session state, kept in sync with Supabase.
- *
- * - On mount, reads whatever session is already in localStorage (fast,
- *   no network) and also picks up a session from an OAuth redirect's
- *   ?code= param (Supabase's client resolves that internally).
- * - Subscribes to onAuthStateChange so every tab/component reacts the
- *   moment sign-in/sign-out happens, without prop-drilling.
+ * client side session state synced with supabase.
+ * reads existing session on mount and tracks auth state changes.
  */
 export function useSession(): SessionState {
   const [session, setSession] = useState<Session | null>(null);

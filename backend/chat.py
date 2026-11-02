@@ -1,11 +1,6 @@
-"""Agentic RAG chat pipeline: tool selection -> Groq tool-calling loop ->
-postprocessing (groundedness check, confidence thresholding, citations,
-per-user ownership check).
+"""agentic rag chat pipeline with tool calling and postprocessing.
 
-Milestone 6. Builds on tools.py's search_internal_db/search_the_web (built
-and tested independently in Milestone 3) and auth.py's optional-auth
-helpers (Milestone 4/5). main.py's /chat route is a thin wrapper around
-run_chat() here, matching the ingest_file()/main.py split from Milestone 5.
+includes confidence filtering, groundedness checks, and source shaping.
 """
 
 import json
@@ -20,30 +15,16 @@ from tools import search_internal_db, search_the_web
 
 _client = Groq(api_key=GROQ_API_KEY)
 
-# Some Groq-hosted models (notably openai/gpt-oss-*, trained on OpenAI's
-# "Harmony" format) occasionally reach for a tool baked into their own
-# training -- e.g. "open_file" -- instead of one of the tools actually
-# offered in this request. Groq validates the tool name server-side and
-# hard-rejects the whole completion with a 400 tool_use_failed when this
-# happens, rather than returning it as a normal assistant tool-call message
-# the loop could otherwise catch and redirect. _INVALID_TOOL_NAME_RE pulls
-# the hallucinated name out of that error's message for the corrective
-# retry in _run_agentic_loop below.
+# some models may call tools that were not offered in this request.
+# groq rejects that call with tool use failed.
+# this regex extracts the invalid name for corrective retry.
 _INVALID_TOOL_NAME_RE = re.compile(r"attempted to call tool '([^']+)'")
 
-# Hard cap on tool-call round trips per request. Not expected to be hit in
-# normal use (most questions resolve in 1-2 tool calls), but without a cap a
-# model that keeps calling tools instead of answering would turn one /chat
-# request into an unbounded number of Groq calls.
+# hard cap on tool rounds per request to prevent loops.
 MAX_TOOL_ROUNDS = 5
 
-# Cosine-similarity floor for a retrieved chunk to be treated as actually
-# relevant, rather than just "the least-far match we had." match_documents
-# returns the closest rows regardless of whether any of them are good
-# matches, so this is enforced here, not left to the model to judge from
-# the raw scores. 0.5 is a starting point (all-MiniLM-L6-v2 embeddings),
-# not a value derived from real query traffic yet -- revisit once there's
-# usage data to tune it against.
+# minimum similarity for accepted retrieved chunks.
+# threshold is a practical start point and can be tuned later.
 CONFIDENCE_THRESHOLD = 0.5
 
 WEB_SEARCH_TOOL: dict[str, Any] = {
@@ -93,9 +74,8 @@ DOC_SEARCH_TOOL: dict[str, Any] = {
 
 
 def _build_tools(user_id: str | None) -> list[dict[str, Any]]:
-    """Web search is always available; doc search only exists as an option
-    for the model when there's a logged-in user_id to scope it to -- an
-    anonymous request has no documents to search in the first place.
+    """web search is always available.
+    doc search is added only for logged in users.
     """
     tools = [WEB_SEARCH_TOOL]
     if user_id:
@@ -104,10 +84,7 @@ def _build_tools(user_id: str | None) -> list[dict[str, Any]]:
 
 
 def _build_system_prompt(user_id: str | None) -> str:
-    """The prompt has to match the tool list exactly -- telling the model
-    about a tool it wasn't given (or hiding one it has) causes it to either
-    hallucinate a call that will fail or ignore a tool it should use.
-    """
+    """prompt must match the exact tool list for this request."""
     base = (
         "You are S3RA, a retrieval-augmented assistant. Answer using tools "
         "rather than memorized knowledge whenever the question depends on "
@@ -133,39 +110,24 @@ def _build_system_prompt(user_id: str | None) -> str:
 def _execute_tool_call(
     name: str, arguments: dict, user_id: str | None, token: str | None
 ) -> tuple[str, list[dict]]:
-    """Run one tool call. Returns (content shown to the model, chunks
-    retrieved for postprocessing).
+    """run one tool call and return model content plus retrieved chunks.
 
-    Only search_internal_db populates the chunks list -- citations and the
-    groundedness check are scoped to document retrieval, not web search
-    (see run_chat's docstring for why).
+    only internal doc search returns chunks for later grounding and sources.
     """
     if name == "search_the_web":
         return search_the_web(arguments.get("query", "")), []
 
     if name == "search_internal_db":
         if not token:
-            # Shouldn't be reachable -- the tool is only offered when
-            # user_id is set, and user_id/token come from the same header --
-            # but fail loudly-but-safely rather than crash the request if
-            # this invariant is ever violated by a future change.
+            # this path should not happen, but return safe fallback if it does.
             return "Document search is unavailable for this request.", []
 
         raw_chunks = search_internal_db(arguments.get("query", ""), token=token)
 
-        # Confidence thresholding: drop chunks that are simply the nearest
-        # thing available, not an actually relevant match. This happens
-        # before the model or the citation list ever sees them, so a weak
-        # match can't get woven into the answer just because it was
-        # top-ranked among bad options.
+        # drop low confidence nearest matches before model sees them.
         confident = [c for c in raw_chunks if c.get("similarity", 0) >= CONFIDENCE_THRESHOLD]
 
-        # Defense-in-depth ownership check on top of RLS (per the README's
-        # stated model: RLS is the enforced boundary, this is a redundant
-        # second layer, not a substitute for it). match_documents may not
-        # return a user_id column at all, so this only ever rejects a chunk
-        # when one *is* present and doesn't match -- absence of the field
-        # isn't treated as a pass, but it also can't be checked further here.
+        # extra ownership check on top of rls when user id is present.
         owned = [c for c in confident if c.get("user_id") in (None, user_id)]
         if len(owned) != len(confident):
             print(
@@ -189,17 +151,9 @@ def _execute_tool_call(
 
 
 def _extract_invalid_tool_name(error: groq.BadRequestError) -> str | None:
-    """If `error` is Groq's tool_use_failed response -- the model called a
-    tool name that wasn't in this request's tool list, or sent arguments
-    that didn't parse -- return the attempted tool name (or a generic
-    placeholder if the message didn't include one) so the caller can feed
-    it back to the model as a correction. Returns None for any other kind
-    of 400 (a genuinely malformed request, an unrelated validation error,
-    etc.), which the caller should let propagate rather than retry.
+    """extract invalid tool names from tool use failed errors.
 
-    `error.body` mirrors the raw JSON error payload on Groq/OpenAI-style
-    SDKs (`{"error": {"message": ..., "code": ..., ...}}`); falls back to
-    parsing `str(error)` if the SDK version in use doesn't expose `.body`.
+    return none for unrelated bad request errors.
     """
     body = getattr(error, "body", None)
     detail = body.get("error") if isinstance(body, dict) else None
@@ -216,20 +170,12 @@ def _extract_invalid_tool_name(error: groq.BadRequestError) -> str | None:
 def _run_agentic_loop(
     message: str, user_id: str | None, token: str | None
 ) -> tuple[str, list[dict], list[str]]:
-    """Send -> check tool_calls -> execute -> append -> resend -> repeat,
-    until Groq returns a final answer instead of another tool call (or
-    MAX_TOOL_ROUNDS is hit). Returns (draft_answer, retrieved_chunks,
-    tools_used).
+    """run chat loop until final answer or max tool rounds.
+
+    returns draft answer, retrieved chunks, and tools used.
     """
     tools = _build_tools(user_id)
-    # Typed as dict[str, Any] rather than Groq's ChatCompletionMessageParam
-    # union deliberately -- messages here mix shapes (plain content vs.
-    # assistant messages carrying tool_calls vs. tool-role replies), which
-    # is exactly what that union expresses, but constructing them as plain
-    # dicts and casting at the call site is far more readable than importing
-    # and satisfying each individual TypedDict variant by hand. Groq's
-    # client (like OpenAI's) accepts plain dicts matching the API shape at
-    # runtime regardless of the stub's nominal typing.
+    # use plain dict message shape and cast at call site.
     messages: list[dict[str, Any]] = [
         {"role": "system", "content": _build_system_prompt(user_id)},
         {"role": "user", "content": message},
@@ -249,19 +195,10 @@ def _run_agentic_loop(
         except groq.BadRequestError as e:
             bad_tool = _extract_invalid_tool_name(e)
             if bad_tool is None:
-                # Some other kind of 400 (bad request shape, unsupported
-                # param, etc.) -- not something a corrective message can
-                # fix, so this is a real failure. Let it propagate to
-                # main.py's handler, same as before this fix.
+                # unrelated bad request errors should propagate.
                 raise
 
-            # Groq rejects the whole completion server-side when the model
-            # (some models, e.g. openai/gpt-oss-*, occasionally reach for a
-            # tool baked into their own training instead of one actually
-            # offered here) calls a tool that isn't in this request's tool
-            # list -- there's no assistant message to append in this case,
-            # just a corrective nudge, consuming one of MAX_TOOL_ROUNDS so a
-            # model that keeps doing this still can't loop forever.
+            # invalid tool calls get a corrective message and retry.
             print(
                 f"_run_agentic_loop: model attempted invalid tool {bad_tool!r}, "
                 "retrying with a corrective message"
@@ -323,9 +260,7 @@ def _run_agentic_loop(
                 }
             )
 
-    # Exhausted MAX_TOOL_ROUNDS without a final answer. Ask once more with
-    # tools disabled so the model is forced to wrap up with whatever it's
-    # gathered so far, instead of the request silently returning nothing.
+    # max rounds reached, request final answer with tools disabled.
     messages.append(
         {
             "role": "user",
@@ -337,12 +272,8 @@ def _run_agentic_loop(
     except groq.BadRequestError as e:
         if _extract_invalid_tool_name(e) is None:
             raise
-        # No `tools` param is passed on this final call, so a genuine
-        # tool-call attempt shouldn't be possible here -- but some models
-        # can still emit tool-call-shaped output from their own training
-        # even when nothing was offered. There's no more budget left to
-        # retry (MAX_TOOL_ROUNDS is already exhausted), so this degrades to
-        # a plain apology instead of a 500.
+        # final call has no tools.
+        # if model still emits invalid tool behavior, return graceful fallback.
         print(
             "_run_agentic_loop: invalid tool call on the final no-tools call, "
             f"giving up gracefully: {e}"
@@ -359,14 +290,9 @@ def _run_agentic_loop(
 def _groundedness_check(
     draft_answer: str, retrieved_chunks: list[dict], tools_used: list[str]
 ) -> str:
-    """Verify the draft answer is actually supported by the retrieved
-    document chunks, and soften/strip claims that aren't.
+    """verify draft answer support against retrieved document chunks.
 
-    Scoped to document retrieval only -- web search results are treated as
-    already-current by design (that's the point of the tool), so this isn't
-    re-litigating web-sourced claims, only doc-sourced ones. A second Groq
-    call is used rather than a keyword/substring check, since "is this
-    supported" is a semantic judgment a string match can't make reliably.
+    this runs only when internal document search was used.
     """
     if "search_internal_db" not in tools_used or not retrieved_chunks:
         return draft_answer
@@ -389,8 +315,7 @@ def _groundedness_check(
             messages=cast(Any, [{"role": "user", "content": verification_prompt}]),
         )
         raw = (response.choices[0].message.content or "").strip()
-        # Groq models sometimes wrap JSON in a markdown fence despite being
-        # told not to -- strip it rather than let json.loads fail on it.
+        # strip markdown fences if model wraps json output.
         if raw.startswith("```"):
             raw = raw.strip("`")
             if raw.startswith("json"):
@@ -400,53 +325,33 @@ def _groundedness_check(
         if revised:
             return revised
     except Exception as e:
-        # A broken verification call shouldn't take the whole answer down
-        # with it -- fall back to the ungrounded-checked draft rather than
-        # erroring the request over a postprocessing step.
+        # verification failures should not break the main answer flow.
         print(f"_groundedness_check: verification failed, returning draft unchanged: {e}")
 
     return draft_answer
 
 
-# Some Groq-hosted models (esp. openai/gpt-oss-*, trained on OpenAI's
-# "Harmony"/browsing format) emit citation markers like "【5†L1-L4】" out of
-# habit. Nothing in this pipeline produces footnotes for them to resolve
-# against, so on the frontend they just show up as literal noise -- strip
-# them here rather than teach the frontend to special-case them.
+# some models emit stray citation markers.
+# remove them before sending output to frontend.
 _CITATION_ARTIFACT_RE = re.compile(r"【[^】]*】")
 
-# The model writes LaTeX with \[ \] (display) and \( \) (inline)
-# delimiters -- valid LaTeX, but not what the frontend's markdown+math
-# renderer (remark-math) looks for, which is $$ $$ and $ $. Converting
-# here keeps this a pure output-formatting concern instead of fighting the
-# model's prompt to change its LaTeX style.
+# convert latex delimiters to markdown math style for frontend renderer.
 _LATEX_DISPLAY_RE = re.compile(r"\\\[(.+?)\\\]", re.DOTALL)
 _LATEX_INLINE_RE = re.compile(r"\\\((.+?)\\\)", re.DOTALL)
 
 
 def _postprocess_answer(answer: str) -> str:
-    """Clean up raw model output before it's sent to the frontend.
-
-    Runs after the groundedness check, on whatever text is actually going
-    out the door, so it catches artifacts regardless of whether they came
-    from the original draft or a revised_answer.
-    """
+    """clean model output before returning it to frontend."""
     cleaned = _CITATION_ARTIFACT_RE.sub("", answer)
     cleaned = _LATEX_DISPLAY_RE.sub(lambda m: f"\n\n$$\n{m.group(1).strip()}\n$$\n\n", cleaned)
     cleaned = _LATEX_INLINE_RE.sub(lambda m: f"${m.group(1).strip()}$", cleaned)
-    # Collapse the blank-line runs the delimiter conversion above can leave
-    # behind (e.g. a display equation that already sat on its own line).
+    # collapse extra blank lines after delimiter conversion.
     cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
     return cleaned.strip()
 
 
 def _build_sources(retrieved_chunks: list[dict]) -> list[dict]:
-    """Dedupe retrieved chunks down to distinct (source, page) citations.
-
-    Several chunks can land on the same source/page range (e.g. two
-    neighboring chunks both matched); the response only needs to say which
-    source/page combinations were actually used, not list every raw chunk.
-    """
+    """dedupe retrieved chunks to distinct source and page citations."""
     seen = set()
     sources = []
     for c in retrieved_chunks:
@@ -464,15 +369,10 @@ def _build_sources(retrieved_chunks: list[dict]) -> list[dict]:
 
 
 def run_chat(message: str, user_id: str | None, token: str | None) -> dict:
-    """Entry point for POST /chat.
+    """entry point for chat route.
 
-    Auth is optional: user_id/token are None together for an anonymous
-    caller (web search only) or both set together for a logged-in one
-    (both tools) -- they come from the same Authorization header via
-    auth.py's get_user_id/get_token, so they can't be set independently.
-
-    Returns the structured shape the route always sends back:
-    {"answer": str, "sources": [{"source": str, "page": ...}], "tool_used": [str]}
+    auth is optional.
+    returns answer, sources, and tools used.
     """
     draft_answer, retrieved_chunks, tools_used = _run_agentic_loop(message, user_id, token)
     checked_answer = _groundedness_check(draft_answer, retrieved_chunks, tools_used)

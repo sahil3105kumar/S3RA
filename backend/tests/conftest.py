@@ -1,24 +1,8 @@
-"""Shared test fixtures and import-time environment setup.
+"""shared test fixtures and import time env setup.
 
-Everything at module level here runs before pytest imports any test module,
-which matters a lot for this codebase specifically:
-
-- config.py raises RuntimeError at IMPORT time if SUPABASE_URL/
-  SUPABASE_ANON_KEY/SUPABASE_SERVICE_ROLE_KEY aren't set -- so those have to
-  exist in os.environ before `main` (or anything main imports) is touched.
-- tools.py and ingest.py both instantiate a real SentenceTransformer at
-  import time (`model = SentenceTransformer("all-MiniLM-L6-v2")`), which
-  would otherwise try to download real model weights from Hugging Face on
-  every test run. Stubbed out here since these tests exercise the chat/
-  route logic, not embedding quality.
-- tools.py imports `ddgs`, which isn't installed in the test environment
-  (search_the_web is mocked directly in any test that touches it, so the
-  real package is never needed).
-
-Both stubs are injected into sys.modules before the real imports happen,
-so `from sentence_transformers import SentenceTransformer` and
-`from ddgs.exceptions import DDGSException` resolve to these fakes instead
-of hitting the network or failing on a missing package.
+module level setup runs before test imports.
+this ensures required env vars exist early.
+heavy or missing deps are stubbed to keep tests fast and offline.
 """
 
 import os
@@ -77,8 +61,7 @@ if "ddgs" not in sys.modules:
 
 @pytest.fixture
 def client():
-    """FastAPI TestClient, imported lazily so the sys.modules/env setup
-    above always runs first regardless of test collection order."""
+    """lazy fastapi test client import so setup above runs first."""
     from fastapi.testclient import TestClient
 
     from main import app

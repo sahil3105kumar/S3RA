@@ -24,9 +24,8 @@ export function UploadPanel({ session, open, onClose }: UploadPanelProps) {
   if (!open) return null;
 
   async function handleFile(file: File) {
-    // Belt-and-suspenders: the panel only renders its dropzone when
-    // session is set, but the access token is re-read here rather than
-    // trusted from closure in case it expired between render and click.
+    // panel renders upload only when session exists.
+    // still re read token here in case it changed before click.
     if (!session) return;
     setState({ status: "uploading", filename: file.name });
     try {
@@ -69,7 +68,7 @@ export function UploadPanel({ session, open, onClose }: UploadPanelProps) {
         ) : (
           <div className="space-y-3">
             <p className="text-[13px] leading-relaxed text-ink-300">
-              PDFs are chunked, embedded, and stored under your account only — no one else can search them.
+              PDFs are chunked, embedded, and stored under your account only - no one else can search them.
             </p>
 
             <input
@@ -98,7 +97,7 @@ export function UploadPanel({ session, open, onClose }: UploadPanelProps) {
 
             {state.status === "done" && (
               <p className="rounded-md border border-signal/30 bg-signal/10 px-3 py-2 text-[12.5px] text-signal">
-                {state.filename} indexed — {state.chunks} chunk{state.chunks === 1 ? "" : "s"} added.
+                {state.filename} indexed - {state.chunks} chunk{state.chunks === 1 ? "" : "s"} added.
               </p>
             )}
             {state.status === "error" && (
