@@ -1,12 +1,7 @@
-"""Clean raw extracted text before it gets chunked and embedded.
+"""clean extracted text before chunking and embedding.
 
-Handles the mess that PDF extraction typically leaves behind:
-- Running headers/footers that repeat on (almost) every page
-- Standalone page-number lines ("12", "Page 12 of 40", "- 12 -")
-- Hard line-wraps in the middle of sentences (PDF text is wrapped to the
-  page width, not to sentence boundaries)
-- Non-canonical unicode (e.g. ligatures, fancy quotes, decomposed accents)
-  via NFKC normalization, so the same word always embeds the same way
+remove repeated headers and footers, page number lines, and hard wraps.
+normalize unicode so equivalent words embed consistently.
 """
 
 import re
@@ -18,29 +13,26 @@ from preprocessing.headings import is_heading_line
 
 _PAGE_NUMBER_RE = re.compile(
     r"^\s*(page\s+)?\d{1,4}(\s*(of|/)\s*\d{1,4})?\s*$"
-    r"|^\s*[-–—]\s*\d{1,4}\s*[-–—]\s*$",
+    r"|^\s*[-–-]\s*\d{1,4}\s*[-–-]\s*$",
     re.IGNORECASE,
 )
 
-# A line that looks like a paragraph should end here (sentence punctuation,
-# closing bracket/quote, or a bullet/list marker starting the NEXT line).
+# line endings that likely close a sentence or paragraph.
 _SENTENCE_END_RE = re.compile(r"[.!?:;\"')\]]\s*$")
 _BULLET_RE = re.compile(r"^\s*([\-*•‣▪]|\d+[.)]|\([a-zA-Z0-9]+\))\s+")
 
 
 def strip_running_headers_footers(pages: list[PageText], min_pages: int = 3) -> list[PageText]:
-    """Remove lines that repeat near-verbatim across most pages (running headers/footers).
+    """remove lines that repeat across many pages.
 
-    Only kicks in once there's enough pages to distinguish "boilerplate that
-    repeats" from "text that happens to repeat once".
+    this starts only when enough pages exist for stable detection.
     """
     if len(pages) < min_pages:
         return pages
 
     line_page_counts: Counter[str] = Counter()
     for page in pages:
-        # Count each distinct line at most once per page, so a line repeated
-        # within a single page doesn't inflate its cross-page count.
+        # count each distinct line once per page.
         seen_this_page = {line.strip() for line in page.text.splitlines() if line.strip()}
         line_page_counts.update(seen_this_page)
 
@@ -59,23 +51,17 @@ def strip_running_headers_footers(pages: list[PageText], min_pages: int = 3) -> 
 
 
 def _fix_line_wraps(text: str) -> str:
-    """Join hard-wrapped lines back into paragraphs, keeping real paragraph breaks.
+    """join hard wrapped lines and keep real paragraph breaks.
 
-    A blank line stays a paragraph break. A single newline gets collapsed
-    into a space UNLESS the line before it looks like the end of a
-    sentence/paragraph, or the line after it looks like a new bullet/heading.
-
-    Headings get special handling: PDFs rarely leave a blank line between a
-    heading and the body text that follows it, so without this a heading
-    would get merged straight into the next paragraph. A heading line is
-    always forced onto its own paragraph, in both directions.
+    blank lines stay as breaks.
+    heading and bullet boundaries are preserved.
     """
     lines = text.split("\n")
     out: list[str] = []
     for raw_line in lines:
         line = raw_line.strip()
         if not line:
-            out.append("")  # preserve paragraph break
+            out.append("")  # preserve paragraph break.
             continue
 
         if is_heading_line(line):
@@ -101,18 +87,18 @@ def _fix_line_wraps(text: str) -> str:
 
 
 def clean_page_text(text: str) -> str:
-    """Per-page cleanup: drop page-number lines, fix wraps, normalize unicode."""
+    """clean one page by removing page numbers, fixing wraps, and normalizing unicode."""
     lines = [line for line in text.split("\n") if not _PAGE_NUMBER_RE.match(line)]
     text = "\n".join(lines)
     text = _fix_line_wraps(text)
     text = unicodedata.normalize("NFKC", text)
-    # Collapse 3+ blank lines down to a single paragraph break.
+    # collapse long blank runs to one paragraph break.
     text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()
 
 
 def clean_pages(pages: list[PageText]) -> list[PageText]:
-    """Full cleaning pipeline: cross-page boilerplate removal, then per-page cleanup."""
+    """run full cleanup pipeline for all pages."""
     pages = strip_running_headers_footers(pages)
     return [
         PageText(page_number=p.page_number, text=clean_page_text(p.text)) for p in pages

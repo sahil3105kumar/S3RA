@@ -5,9 +5,8 @@ import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 
 export function ChatMessageBubble({ message }: { message: ChatMessage }) {
   const isUser = message.role === "user";
-  // Assistant answers are markdown (headings, lists, LaTeX, etc.) that
-  // needs real rendering; user turns and error bubbles are plain text,
-  // where whitespace-pre-wrap is the right (and simpler) choice.
+  // assistant answers use markdown rendering.
+  // user turns and error bubbles stay plain text.
   const isMarkdown = !isUser && !message.pending && !message.error;
 
   return (

@@ -1,9 +1,6 @@
-"""Shared heuristic for "does this single line look like a heading?"
+"""shared rule for heading line detection.
 
-Used by clean.py (to force a heading onto its own paragraph while joining
-hard-wrapped lines) and chunk.py (to pull section labels out of already-
-isolated paragraphs). Keeping one definition means a line is never treated
-as a heading in one stage and as body text in the other.
+clean.py and chunk.py both use this so heading behavior stays consistent.
 """
 
 import re
@@ -12,8 +9,7 @@ _MARKDOWN_HEADING_RE = re.compile(r"^#{1,6}\s+.+$")
 _NUMBERED_HEADING_RE = re.compile(r"^\d+(\.\d+)*\.?\s+[A-Z].{0,80}$")
 _SENTENCE_END_RE = re.compile(r"[.!?]\s*$")
 
-# Short connector words don't need to be capitalized for a line to still
-# read as Title Case (e.g. "Overview of the Data Pipeline").
+# short connector words can stay lowercase and still look like title case.
 _LOWERCASE_STOPWORDS = {
     "a", "an", "and", "as", "at", "but", "by", "for", "in", "of", "on",
     "or", "the", "to", "with", "vs",

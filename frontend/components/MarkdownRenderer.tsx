@@ -3,10 +3,8 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 
-// Maps markdown/HTML elements onto the app's existing dark theme (ink-*,
-// signal) instead of pulling in @tailwind/typography, since this only
-// needs to cover the handful of elements the model actually produces
-// (headings, lists, emphasis, code, tables, blockquotes, links, math).
+// map markdown and html elements to app theme styles.
+// this covers model output elements without tailwind typography plugin.
 const components: Components = {
   p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
   strong: ({ children }) => <strong className="font-semibold text-ink-100">{children}</strong>,
@@ -25,9 +23,8 @@ const components: Components = {
     </a>
   ),
   code: ({ className, children, ...props }) => {
-    // react-markdown only tags fenced code blocks with a `language-*`
-    // className -- that's the one reliable signal to tell a multi-line
-    // block apart from `inline code`, which needs different styling.
+    // fenced blocks include language class names.
+    // use that signal to style block code vs inline code.
     const isBlock = /language-/.test(className ?? "");
     if (isBlock) {
       return (

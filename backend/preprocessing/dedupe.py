@@ -1,9 +1,7 @@
-"""Drop near-duplicate chunks before they get inserted.
+"""drop near duplicate chunks before insert.
 
-Uses cosine similarity between chunk embeddings rather than exact text
-matching, since PDF extraction can produce chunks that differ only in
-whitespace/punctuation but are semantically identical -- and because we've
-already computed the embeddings for insertion, this check is essentially free.
+use cosine similarity on embeddings, not exact text matching.
+this catches semantically same chunks from extraction noise.
 """
 
 import numpy as np
@@ -16,18 +14,17 @@ def filter_near_duplicates(
     embeddings: list[list[float]],
     threshold: float = DEFAULT_SIMILARITY_THRESHOLD,
 ) -> tuple[list, list[list[float]]]:
-    """Greedily keep the first occurrence of each near-duplicate group.
+    """keep the first item from each near duplicate group.
 
-    `items` and `embeddings` must be the same length and in the same order
-    (e.g. items = chunk texts or Chunk objects, embeddings = their vectors).
-    Returns the filtered (items, embeddings), preserving original order.
+    items and embeddings must align by index.
+    returns filtered items and embeddings in original order.
     """
     if not items:
         return items, embeddings
 
     matrix = np.array(embeddings, dtype=float)
     norms = np.linalg.norm(matrix, axis=1, keepdims=True)
-    norms[norms == 0] = 1e-12  # avoid divide-by-zero for a degenerate zero vector
+    norms[norms == 0] = 1e-12  # avoid divide by zero for zero vectors.
     normalized = matrix / norms
 
     kept_indices: list[int] = []

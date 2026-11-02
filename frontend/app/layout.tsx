@@ -21,7 +21,7 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "S3RA — Agentic RAG Chatbot",
+  title: "S3RA - Agentic RAG Chatbot",
   description: "Chat grounded in your documents and the live web, with an agent deciding which to use.",
 };
 

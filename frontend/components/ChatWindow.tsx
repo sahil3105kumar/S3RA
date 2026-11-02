@@ -30,9 +30,8 @@ export function ChatWindow({ session }: { session: Session | null }) {
     setSending(true);
 
     try {
-      // Chat works with or without a session -- the access token is only
-      // attached when one exists, matching the backend's optional-auth
-      // contract (anonymous callers get web search only).
+      // chat works with or without a session.
+      // attach token only when it exists.
       const result = await sendChatMessage(text, session?.access_token);
       setMessages((prev) =>
         prev.map((m) =>
@@ -74,7 +73,7 @@ export function ChatWindow({ session }: { session: Session | null }) {
         <p className="mt-2 text-center text-[11px] text-ink-500">
           {session
             ? "Searches your documents and the live web."
-            : "Answers use live web search only — sign in to also search your own documents."}
+            : "Answers use live web search only - sign in to also search your own documents."}
         </p>
       </div>
     </div>
@@ -88,7 +87,7 @@ function EmptyState({ loggedIn }: { loggedIn: boolean }) {
       <p className="max-w-xs text-[13px] leading-relaxed text-ink-400">
         {loggedIn
           ? "It'll decide on its own whether to check your documents, search the web, both, or neither."
-          : "No account needed to chat — sign in if you want it searching your own uploaded documents too."}
+          : "No account needed to chat - sign in if you want it searching your own uploaded documents too."}
       </p>
     </div>
   );

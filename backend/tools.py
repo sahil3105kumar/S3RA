@@ -8,22 +8,11 @@ from embeddings import embed
 
 
 def search_internal_db(query: str, token: str, top_k: int = 3) -> list[dict[str, Any]]:
-    """Search the internal document store via the match_documents RPC.
+    """search internal docs with the match documents rpc.
 
-    `token` is the requesting user's raw access token (no "Bearer " prefix).
-    A fresh, per-request client is built from it so this query runs as that
-    authenticated user and is subject to RLS -- no service_role client is
-    used here, matching the per-request authenticated client decision for
-    anything tied to a live user request (`documents` is a shared read pool,
-    so RLS lets any authenticated user read all rows; this still ensures
-    logged-out/invalid-token callers get nothing, per the `to authenticated`
-    policy).
-
-    Returns a list of matching chunks, or an empty list if there's nothing
-    relevant or the lookup couldn't be completed (network/DB/auth error).
-    Errors are swallowed rather than raised so a down Supabase instance (or
-    an expired token) doesn't take the whole agent turn down with it -- the
-    caller just sees "no matches".
+    token is the caller access token without bearer prefix.
+    query runs as that user with rls applied.
+    returns matching chunks or empty list on no match or lookup failure.
     """
     try:
         supabase = get_authenticated_client(token)
@@ -40,20 +29,15 @@ def search_internal_db(query: str, token: str, top_k: int = 3) -> list[dict[str,
         print(f"search_internal_db: no matches for query={query!r}")
         return []
 
-    # match_documents is a SETOF-returning RPC, so this is always a list of
-    # row dicts at runtime -- postgrest-py's stubs just can't express that
-    # generically (RPC responses are typed as the broad JSON union), which
-    # is what the cast is narrowing back down for callers/type-checking.
+    # match documents rpc returns row dict list at runtime.
+    # cast narrows broad sdk json typing for callers and type checks.
     return cast(list, result.data)
 
 
 def search_the_web(query: str, top_k=3):
-    """Search the web via DDGS.
+    """search the web with ddgs.
 
-    Returns a formatted string of results, or a short human-readable message
-    if there's nothing found or the search couldn't be completed (network
-    error, rate limit, timeout). Kept as a string return (matching the
-    success case) so callers don't have to special-case the failure modes.
+    returns formatted results, or a short message when search fails or has no hits.
     """
     try:
         with DDGS() as ddgs:
